@@ -1,0 +1,118 @@
+{
+  "_meta": {
+    "config": "1С:Управление торговлей 11 (рабочая гипотеза)",
+    "verified_on_live_base": false,
+    "note": "Имена сущностей и реквизитов НЕ сверены с базой заказчика. До ответа на открытый вопрос №1 (AGENT.md, раздел 9) файл считать шаблоном: сверить имена в /odata/standard.odata/$metadata конкретной базы и поправить."
+  },
+  "cost_settings": {
+    "fuel_price_rub_per_l": null,
+    "platon_rub_per_km": null,
+    "social_tax_pct": 30.0,
+    "overhead_pct": 8.5,
+    "edo_doc_price_rub": null,
+    "cargo_insurance_rate_pct": null,
+    "cargo_insurance_min_rub": null,
+    "winter_months": [11, 12, 1, 2, 3]
+  },
+  "entities": {
+    "company": {
+      "path": "Catalog_Организации",
+      "select": "Ref_Key,Description,ИНН,КПП",
+      "filter": "DeletionMark eq false",
+      "fields": {
+        "id": "Ref_Key",
+        "name": "Description",
+        "inn": "ИНН",
+        "kpp": "КПП"
+      },
+      "defaults": {
+        "edo_operator": null,
+        "edo_connected": null,
+        "gis_epd_registered": null
+      }
+    },
+    "vehicles": {
+      "path": "Catalog_ТранспортныеСредства",
+      "filter": "DeletionMark eq false",
+      "fields": {
+        "id": "Ref_Key",
+        "plate": "ГосударственныйНомер",
+        "model": "Description",
+        "fuel_norm_l_100km": "НормаРасходаТоплива",
+        "tank_l": "ОбъемБака"
+      },
+      "defaults": {
+        "type": "тягач",
+        "axles": 5,
+        "winter_surcharge_pct": 8.0,
+        "purchase_price_rub": null,
+        "resource_km": null,
+        "tires_set_rub": null,
+        "tires_resource_km": null,
+        "maintenance_rub_per_km": null,
+        "platon_applicable": true
+      }
+    },
+    "drivers": {
+      "path": "Catalog_ФизическиеЛица",
+      "filter": "DeletionMark eq false",
+      "fields": {
+        "id": "Ref_Key",
+        "name": "Description"
+      },
+      "defaults": {
+        "rate_rub_per_km": null,
+        "daily_allowance_rub": null,
+        "ukep": null
+      }
+    },
+    "trips": {
+      "path": "Document_ПутевойЛист",
+      "filter": "DeletionMark eq false",
+      "fields": {
+        "id": "Ref_Key",
+        "number": "Number",
+        "date_start": "Date",
+        "vehicle_id": "ТранспортноеСредство_Key",
+        "driver_id": "Водитель_Key",
+        "origin": "ПунктОтправления",
+        "destination": "ПунктНазначения",
+        "distance_plan_km": "ПробегПлан",
+        "distance_fact_km": "ПробегФакт",
+        "fuel_fact_l": "РасходТопливаФакт",
+        "customer": "Контрагент/Description",
+        "revenue_rub": "СуммаДокумента"
+      },
+      "defaults": {
+        "federal_share": 0.9,
+        "toll_road_rub": 0,
+        "days": 1,
+        "status": "неизвестен",
+        "progress_pct": null,
+        "eta": null,
+        "edo_docs": []
+      }
+    },
+    "fuel_purchases": {
+      "path": "Document_ПоступлениеГСМ",
+      "filter": "DeletionMark eq false",
+      "fields": {
+        "date": "Date",
+        "vehicle_id": "ТранспортноеСредство_Key",
+        "liters": "Количество",
+        "price_rub_per_l": "Цена",
+        "station": "АЗС"
+      }
+    },
+    "tariffs": {
+      "path": "Catalog_ТарифыПеревозок",
+      "filter": "DeletionMark eq false",
+      "fields": {
+        "customer": "Контрагент/Description",
+        "rub_per_km": "СтавкаЗаКм",
+        "min_rub": "МинимальнаяСтавка",
+        "cargo_type": "ТипГруза"
+      }
+    }
+  }
+}

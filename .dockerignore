@@ -1,0 +1,16 @@
+.git
+.gitignore
+.venv
+venv
+__pycache__
+**/__pycache__
+*.pyc
+.env
+data/app.sqlite3
+data/*.sqlite3
+data/demo_1c_large.json
+dist/
+.idea
+.vscode
+tests/
+docs/screenshots

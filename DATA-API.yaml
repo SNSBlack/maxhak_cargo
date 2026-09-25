@@ -1,0 +1,143 @@
+# DATA-API.yaml
+#
+# Карточка собственного API решения. Требуется, потому что решение
+# предоставляет собственные HTTP-методы, которые являются частью продукта
+# (FAQ, вопрос 12): мини-приложение MAX работает только через них.
+#
+# Шаблон организаторов на момент подготовки сдачи не выдан, поэтому файл
+# собран по перечисленным в FAQ пунктам: HTTPS-адрес, ссылка на OpenAPI,
+# тестовые данные и доступы. Если у организаторов есть свой формат, значения
+# переносятся в него без изменений.
+
+product:
+  name: Cargo Optimizer
+  summary: >-
+    Мини-приложение и бот в MAX для транспортной компании: себестоимость рейса
+    с разбивкой по статьям, ЭДО-комплаенс по обязательным ЭПД, сравнение
+    маршрутов по деньгам и трекинг груза для клиента.
+  track: Транспорт и логистика
+  bot:
+    username: t459_hakaton_max_bot
+    user_id: 389745805
+    deeplink: https://max.ru/t459_hakaton_max_bot
+
+api:
+  # Заполняется адресом хостинга при публикации. До публикации решение
+  # поднимается локально и доступно на http://127.0.0.1:8099
+  base_url: ""
+  local_url: http://127.0.0.1:8099
+  protocol: HTTPS
+  openapi:
+    version: "3.1.0"
+    file: docs/openapi.yaml
+    json: docs/openapi.json
+    interactive_docs: /docs
+  health_check: /api/health
+  formats:
+    request: application/json
+    response: application/json
+  language: ru
+
+authentication:
+  type: MAX Mini App initData
+  header: X-Max-Init-Data
+  description: >-
+    Клиент мини-приложения передаёт подпись запуска, backend проверяет её
+    HMAC-SHA256 с токеном бота. Режим задаётся переменной AUTH_MODE.
+  modes:
+    strict: запрос без валидной подписи отклоняется (режим публикации)
+    lenient: запрос проходит, сессия помечается verified=false
+    dev: подпись не проверяется, для локальной разработки
+  test_access:
+    description: >-
+      Для проверки экспертами API поднимается в режиме AUTH_MODE=dev или
+      lenient, отдельные учётные данные не требуются: методы только читают
+      демонстрационные данные и не изменяют внешние системы.
+    credentials_required: false
+
+endpoints:
+  - method: GET
+    path: /api/health
+    purpose: Проверка живости сервиса
+  - method: GET
+    path: /api/meta
+    purpose: Контекст запуска, источники данных, список нерешённых вопросов
+  - method: GET
+    path: /api/summary
+    purpose: Сводка по парку за период
+    params: [period_days]
+  - method: GET
+    path: /api/trips
+    purpose: Список рейсов
+    params: [status, q, limit, offset]
+  - method: GET
+    path: /api/trips/{trip_id}
+    purpose: Рейс и его себестоимость по 11 статьям с формулами
+  - method: GET
+    path: /api/catalog
+    purpose: Справочники транспорта, водителей и настроек расчёта
+  - method: POST
+    path: /api/cost/calc
+    purpose: Расчёт себестоимости произвольного рейса
+  - method: GET
+    path: /api/history
+    purpose: История расчётов пользователя
+  - method: GET
+    path: /api/edo
+    purpose: Чек-лист готовности к ЭПД и документы, требующие действий
+    params: [limit, offset, only_action]
+  - method: GET
+    path: /api/routes/directions
+    purpose: Направления, для которых известны маршруты
+  - method: GET
+    path: /api/routes/compare
+    purpose: Сравнение вариантов маршрута с объяснением разницы
+    params: [origin, destination, vehicle_id, driver_id, revenue_rub, cargo_value_rub, days]
+  - method: GET
+    path: /api/tracking
+    purpose: Грузы в пути
+  - method: GET
+    path: /api/tracking/{trip_id}
+    purpose: Статус груза, срок прибытия и ставка для грузоотправителя
+
+test_data:
+  description: >-
+    Доступа к реальной базе 1С, оператору ЭДО и движку маршрутизации нет,
+    поэтому используются синтетические данные (FAQ, вопрос 13). Они помечены
+    как демонстрационные и в самих файлах, и в каждом ответе API полем
+    data_is_mock, и бейджем в интерфейсе.
+  datasets:
+    - file: data/demo_1c.json
+      purpose: Небольшой набор для проверки формул
+      contents: 6 рейсов, 5 машин, 5 водителей, 10 документов ЭДО
+    - file: data/demo_1c_large.json
+      purpose: Нагрузочный и продуктовый прогон на объёме года
+      contents: 1200 рейсов, 40 машин, 30 водителей, 2330 документов ЭДО, 2070 ГСМ-накладных
+      generator: tools/generate_dataset.py
+      deterministic_seed: 20260924
+      note: В репозиторий не коммитится, воспроизводится командой генератора
+  switch: Переменная DEMO_DATA_FILE в .env
+
+mock_integrations:
+  # Явное перечисление того, что смоделировано (FAQ, вопросы 13 и 15)
+  - name: 1С (путевые листы, ТС, водители, тарифы, ГСМ)
+    status: модель
+    implemented: Адаптер OData с вынесенным маппингом полей (backend/adapters/odata.py)
+    blocked_by: Нет конфигурации и тестового доступа к базе пилотного заказчика
+    to_enable: DATA_SOURCE=odata, ONEC_BASE_URL, учётка только на чтение, сверка имён реквизитов
+  - name: Оператор ЭДО (статусы ЭТрН, ЭЗЗ, ЭПД)
+    status: модель
+    implemented: Транспорт к API оператора (backend/services/edo.py)
+    blocked_by: Оператор для пилота не выбран, нет примера ответа API
+    to_enable: EDO_PROVIDER, EDO_API_BASE, EDO_API_KEY, разбор ответа конкретного оператора
+  - name: Движок маршрутизации
+    status: модель
+    implemented: Фасад и клиент Яндекс.Маршрутизации (backend/services/routing.py)
+    blocked_by: Нет ключа API, не решено, используется ли 1С:TMS заказчика
+    to_enable: ROUTING_ENGINE=yandex, YANDEX_ROUTING_API_KEY
+
+external_apis:
+  - name: MAX Bot API
+    url: https://botapi.max.ru
+    usage: Long polling обновлений, отправка сообщений, кнопка запуска мини-приложения
+    public_documented: true

@@ -1,0 +1,575 @@
+openapi: 3.1.0
+info:
+  title: Cargo Optimizer API
+  description: '
+
+    Собственное API решения Cargo Optimizer: мини-приложение MAX обращается только
+
+    к этим методам.
+
+
+    **Источники данных.** Все внешние интеграции сейчас работают в демо-режиме и
+
+    помечены в ответах полем `data_is_mock`. Смоделированы: выгрузка из 1С
+
+    (адаптер OData написан, но не сверен с живой базой), API оператора ЭДО и движок
+
+    маршрутизации. Что нужно для перехода на боевые источники, описано в README.
+
+
+    **Авторизация.** Мини-приложение передаёт подпись запуска в заголовке
+
+    `X-Max-Init-Data`. Поведение задаётся переменной `AUTH_MODE`: `strict` отклоняет
+
+    запросы без валидной подписи, `lenient` помечает сессию неподтверждённой,
+
+    `dev` проверку не делает.
+
+    '
+  contact:
+    name: Команда Cargo Optimizer
+    url: https://max.ru/t459_hakaton_max_bot
+  license:
+    name: Проприетарное решение хакатона MAX
+  version: 1.0.0
+servers:
+- url: http://127.0.0.1:8099
+  description: Текущий контур
+paths:
+  /api/meta:
+    get:
+      tags:
+      - meta
+      summary: 'Контекст запуска: пользователь, компания, источники данных'
+      operationId: meta_api_meta_get
+      parameters:
+      - name: x-max-init-data
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Max-Init-Data
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                title: Response Meta Api Meta Get
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/health:
+    get:
+      tags:
+      - meta
+      summary: Проверка живости сервиса
+      operationId: health_api_health_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                additionalProperties:
+                  type: string
+                type: object
+                title: Response Health Api Health Get
+  /api/trips:
+    get:
+      tags:
+      - trips
+      summary: Список рейсов с фильтрами, поиском и постраничностью
+      operationId: list_trips_api_trips_get
+      parameters:
+      - name: status
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            pattern: ^(active|done)$
+          - type: 'null'
+          title: Status
+      - name: q
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+            maxLength: 80
+          - type: 'null'
+          title: Q
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 200
+          minimum: 1
+          default: 50
+          title: Limit
+      - name: offset
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 0
+          default: 0
+          title: Offset
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                title: Response List Trips Api Trips Get
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/trips/{trip_id}:
+    get:
+      tags:
+      - trips
+      summary: Рейс и его себестоимость по статьям
+      operationId: trip_detail_api_trips__trip_id__get
+      parameters:
+      - name: trip_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Trip Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                title: Response Trip Detail Api Trips  Trip Id  Get
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/summary:
+    get:
+      tags:
+      - trips
+      summary: 'Сводка по парку за период: выручка, маржа, перерасход топлива'
+      operationId: summary_api_summary_get
+      parameters:
+      - name: period_days
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 730
+          minimum: 1
+          default: 30
+          title: Period Days
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                title: Response Summary Api Summary Get
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/catalog:
+    get:
+      tags:
+      - trips
+      summary: 'Справочники: транспорт, водители, настройки расчёта'
+      operationId: catalog_data_api_catalog_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                type: object
+                title: Response Catalog Data Api Catalog Get
+  /api/cost/calc:
+    post:
+      tags:
+      - trips
+      summary: Расчёт себестоимости произвольного рейса
+      operationId: calc_api_cost_calc_post
+      parameters:
+      - name: x-max-init-data
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Max-Init-Data
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CostRequest'
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                title: Response Calc Api Cost Calc Post
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/history:
+    get:
+      tags:
+      - trips
+      summary: История расчётов пользователя
+      operationId: history_api_history_get
+      parameters:
+      - name: x-max-init-data
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Max-Init-Data
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                title: Response History Api History Get
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/edo:
+    get:
+      tags:
+      - edo
+      summary: Готовность к обязательным ЭПД и документы, требующие действий
+      operationId: overview_api_edo_get
+      parameters:
+      - name: limit
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 200
+          minimum: 1
+          default: 40
+          title: Limit
+      - name: offset
+        in: query
+        required: false
+        schema:
+          type: integer
+          minimum: 0
+          default: 0
+          title: Offset
+      - name: only_action
+        in: query
+        required: false
+        schema:
+          type: boolean
+          default: true
+          title: Only Action
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                title: Response Overview Api Edo Get
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/routes/directions:
+    get:
+      tags:
+      - routes
+      summary: Направления, для которых движок знает маршруты
+      operationId: directions_api_routes_directions_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                type: object
+                title: Response Directions Api Routes Directions Get
+  /api/routes/compare:
+    get:
+      tags:
+      - routes
+      summary: Сравнение вариантов маршрута по деньгам с объяснением разницы
+      operationId: compare_api_routes_compare_get
+      parameters:
+      - name: origin
+        in: query
+        required: true
+        schema:
+          type: string
+          minLength: 2
+          maxLength: 80
+          title: Origin
+      - name: destination
+        in: query
+        required: true
+        schema:
+          type: string
+          minLength: 2
+          maxLength: 80
+          title: Destination
+      - name: vehicle_id
+        in: query
+        required: true
+        schema:
+          type: string
+          title: Vehicle Id
+      - name: driver_id
+        in: query
+        required: true
+        schema:
+          type: string
+          title: Driver Id
+      - name: revenue_rub
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: number
+            minimum: 0
+          - type: 'null'
+          title: Revenue Rub
+      - name: cargo_value_rub
+        in: query
+        required: false
+        schema:
+          type: number
+          minimum: 0
+          default: 0
+          title: Cargo Value Rub
+      - name: days
+        in: query
+        required: false
+        schema:
+          type: number
+          maximum: 60
+          minimum: 1
+          default: 1
+          title: Days
+      - name: x-max-init-data
+        in: header
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: X-Max-Init-Data
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                title: Response Compare Api Routes Compare Get
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+  /api/tracking:
+    get:
+      tags:
+      - tracking
+      summary: Грузы в пути
+      operationId: active_api_tracking_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                additionalProperties: true
+                type: object
+                title: Response Active Api Tracking Get
+  /api/tracking/{trip_id}:
+    get:
+      tags:
+      - tracking
+      summary: Статус груза, срок прибытия и ставка для клиента
+      operationId: shipment_api_tracking__trip_id__get
+      parameters:
+      - name: trip_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Trip Id
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: true
+                title: Response Shipment Api Tracking  Trip Id  Get
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HTTPValidationError'
+components:
+  schemas:
+    CostRequest:
+      properties:
+        distance_km:
+          type: number
+          maximum: 20000.0
+          exclusiveMinimum: 0.0
+          title: Distance Km
+        days:
+          type: number
+          maximum: 60.0
+          minimum: 1.0
+          title: Days
+          default: 1
+        vehicle_id:
+          type: string
+          title: Vehicle Id
+        driver_id:
+          type: string
+          title: Driver Id
+        federal_share:
+          type: number
+          maximum: 1.0
+          minimum: 0.0
+          title: Federal Share
+          default: 0.9
+        toll_road_rub:
+          type: number
+          minimum: 0.0
+          title: Toll Road Rub
+          default: 0
+        cargo_value_rub:
+          type: number
+          minimum: 0.0
+          title: Cargo Value Rub
+          default: 0
+        edo_docs_count:
+          type: integer
+          maximum: 20.0
+          minimum: 0.0
+          title: Edo Docs Count
+          default: 2
+        revenue_rub:
+          anyOf:
+          - type: number
+            minimum: 0.0
+          - type: 'null'
+          title: Revenue Rub
+        trip_date:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Trip Date
+      type: object
+      required:
+      - distance_km
+      - vehicle_id
+      - driver_id
+      title: CostRequest
+    HTTPValidationError:
+      properties:
+        detail:
+          items:
+            $ref: '#/components/schemas/ValidationError'
+          type: array
+          title: Detail
+      type: object
+      title: HTTPValidationError
+    ValidationError:
+      properties:
+        loc:
+          items:
+            anyOf:
+            - type: string
+            - type: integer
+          type: array
+          title: Location
+        msg:
+          type: string
+          title: Message
+        type:
+          type: string
+          title: Error Type
+        input:
+          title: Input
+        ctx:
+          type: object
+          title: Context
+      type: object
+      required:
+      - loc
+      - msg
+      - type
+      title: ValidationError
+tags:
+- name: meta
+  description: 'Служебные методы: кто открыл приложение, на каких источниках оно работает.'
+- name: trips
+  description: Рейсы, справочники и калькулятор себестоимости с разбивкой по статьям.
+- name: edo
+  description: 'ЭДО-комплаенс: чек-лист готовности компании и статусы документов.'
+- name: routes
+  description: Сравнение вариантов маршрута по деньгам с объяснением разницы.
+- name: tracking
+  description: 'Клиентский трекинг груза: стадия, срок прибытия, ставка.'

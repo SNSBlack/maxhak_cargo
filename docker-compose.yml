@@ -1,0 +1,30 @@
+# Запуск одной командой: docker compose up -d --build
+#
+# Перед первым запуском скопируйте .env.example в .env и впишите MAX_BOT_TOKEN.
+# Внешних сервисов, которые нельзя поднять в Docker, решение не требует:
+# источники 1С, оператора ЭДО и движка маршрутов в демо-режиме заменяют
+# встроенные адаптеры.
+
+services:
+  app:
+    build: .
+    image: cargo-optimizer:latest
+    container_name: cargo-optimizer
+    env_file:
+      - .env
+    environment:
+      # Значения из .env перекрываются только там, где внутри контейнера
+      # правильный ответ известен заранее
+      HOST: 0.0.0.0
+      PORT: "8099"
+      DB_PATH: /app/data/app.sqlite3
+    ports:
+      - "8099:8099"
+    volumes:
+      # База подписок и история расчётов переживают пересборку образа
+      - cargo-data:/app/data
+    # Бот должен быть доступен весь период проверки (FAQ, вопрос 11)
+    restart: unless-stopped
+
+volumes:
+  cargo-data:

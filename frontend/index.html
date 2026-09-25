@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="ru" data-theme="auto">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Cargo Optimizer</title>
+<meta name="description" content="Себестоимость рейса, ЭДО-комплаенс и сравнение маршрутов для транспортной компании">
+<link rel="stylesheet" href="https://unpkg.com/@phosphor-icons/web@2.1.1/src/regular/style.css">
+<link rel="stylesheet" href="styles.css">
+<!--
+  MAX Bridge (объект window.WebApp) подключается скриптом платформы.
+  Точный адрес скрипта берётся из текущей документации MAX и подставляется
+  здесь при публикации; вне MAX приложение работает в браузерном режиме.
+-->
+</head>
+<body>
+
+<header class="topbar">
+  <div class="topbar__id">
+    <span class="topbar__brand">Cargo Optimizer</span>
+    <span class="topbar__company" id="company-name">загрузка</span>
+  </div>
+  <div class="topbar__meta">
+    <span class="badge badge--mock" id="mock-badge" hidden>Демо-данные</span>
+    <button class="icon-btn" id="open-tour" type="button" aria-label="Что где находится">
+      <i class="ph ph-question" aria-hidden="true"></i>
+    </button>
+    <button class="icon-btn" id="theme-toggle" type="button" aria-label="Переключить тему">
+      <i class="ph ph-circle-half" aria-hidden="true"></i>
+    </button>
+  </div>
+</header>
+
+<main id="screens">
+
+  <!-- ЭКРАН: РЕЙСЫ -->
+  <section class="screen is-active" id="screen-trips" aria-labelledby="trips-title">
+    <h1 class="screen__title" id="trips-title">Рейсы и себестоимость</h1>
+
+    <div class="filters" role="group" aria-label="Период сводки">
+      <button class="filter is-active" type="button" data-period="30">30 дней</button>
+      <button class="filter" type="button" data-period="90">90 дней</button>
+      <button class="filter" type="button" data-period="365">Год</button>
+    </div>
+
+    <div class="kpi" id="summary-kpi" data-state="loading">
+      <div class="kpi__cell"><span class="kpi__label">Выручка</span><span class="kpi__value num" data-kpi="revenue">-</span></div>
+      <div class="kpi__cell"><span class="kpi__label">Маржа</span><span class="kpi__value num" data-kpi="margin">-</span></div>
+      <div class="kpi__cell"><span class="kpi__label">Перерасход топлива</span><span class="kpi__value num" data-kpi="fuel">-</span></div>
+    </div>
+    <p class="hint" id="summary-hint"></p>
+    <div id="losing-block"></div>
+
+    <div class="section-head">
+      <h2 class="section-title">Рейсы</h2>
+      <button class="btn btn--ghost" id="open-calc" type="button">
+        <i class="ph ph-calculator" aria-hidden="true"></i> Свой расчёт
+      </button>
+    </div>
+
+    <div class="field">
+      <label class="visually-hidden" for="trips-search">Поиск по рейсам</label>
+      <input id="trips-search" type="search" placeholder="Номер, город, госномер, водитель">
+    </div>
+    <div class="filters" role="group" aria-label="Фильтр рейсов">
+      <button class="filter is-active" type="button" data-trip-filter="">Все</button>
+      <button class="filter" type="button" data-trip-filter="active">В работе</button>
+      <button class="filter" type="button" data-trip-filter="done">Завершённые</button>
+    </div>
+
+    <div id="trips-list" class="rows" data-state="loading" aria-live="polite"></div>
+    <div id="trips-more"></div>
+  </section>
+
+  <!-- ЭКРАН: МАРШРУТ -->
+  <section class="screen" id="screen-routes" aria-labelledby="routes-title" hidden>
+    <h1 class="screen__title" id="routes-title">Сравнение маршрутов</h1>
+    <p class="screen__lead">Движок отдаёт варианты, приложение считает каждый в рублях и литрах и объясняет разницу.</p>
+
+    <form class="form" id="route-form">
+      <div class="field">
+        <label for="route-direction">Направление</label>
+        <select id="route-direction" name="direction" required></select>
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label for="route-vehicle">Транспорт</label>
+          <select id="route-vehicle" name="vehicle" required></select>
+        </div>
+        <div class="field">
+          <label for="route-driver">Водитель</label>
+          <select id="route-driver" name="driver" required></select>
+        </div>
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label for="route-revenue">Ставка клиента, ₽</label>
+          <input id="route-revenue" name="revenue" class="num" type="number" min="0" step="100" value="32400">
+          <span class="field__help">Нужна, чтобы показать маржу по каждому варианту</span>
+        </div>
+        <div class="field">
+          <label for="route-cargo">Стоимость груза, ₽</label>
+          <input id="route-cargo" name="cargo" class="num" type="number" min="0" step="10000" value="3120000">
+        </div>
+      </div>
+      <button class="btn btn--primary" type="submit">Сравнить варианты</button>
+    </form>
+
+    <div id="route-result" class="result" data-state="idle" aria-live="polite"></div>
+  </section>
+
+  <!-- ЭКРАН: ЭДО -->
+  <section class="screen" id="screen-edo" aria-labelledby="edo-title" hidden>
+    <h1 class="screen__title" id="edo-title">ЭДО-комплаенс</h1>
+    <div id="edo-content" data-state="loading" aria-live="polite"></div>
+  </section>
+
+  <!-- ЭКРАН: ГРУЗ -->
+  <section class="screen" id="screen-cargo" aria-labelledby="cargo-title" hidden>
+    <h1 class="screen__title" id="cargo-title">Грузы в работе</h1>
+    <p class="screen__lead">Этот экран рассчитан на грузоотправителя: статус, срок прибытия и ставка без внутренней кухни перевозчика.</p>
+    <div id="cargo-content" data-state="loading" aria-live="polite"></div>
+  </section>
+
+</main>
+
+<nav class="tabbar" role="tablist" aria-label="Разделы">
+  <button class="tab is-active" role="tab" aria-selected="true" data-screen="trips" type="button">
+    <i class="ph ph-truck" aria-hidden="true"></i><span>Рейсы</span>
+  </button>
+  <button class="tab" role="tab" aria-selected="false" data-screen="routes" type="button">
+    <i class="ph ph-path" aria-hidden="true"></i><span>Маршрут</span>
+  </button>
+  <button class="tab" role="tab" aria-selected="false" data-screen="edo" type="button">
+    <i class="ph ph-file-text" aria-hidden="true"></i><span>ЭДО</span>
+  </button>
+  <button class="tab" role="tab" aria-selected="false" data-screen="cargo" type="button">
+    <i class="ph ph-package" aria-hidden="true"></i><span>Груз</span>
+  </button>
+</nav>
+
+<!-- Лист расчёта и детализации рейса -->
+<div class="sheet" id="sheet" hidden>
+  <div class="sheet__backdrop" data-close></div>
+  <div class="sheet__panel" role="dialog" aria-modal="true" aria-labelledby="sheet-title">
+    <div class="sheet__head">
+      <h2 id="sheet-title">Расчёт</h2>
+      <button class="icon-btn" type="button" data-close aria-label="Закрыть">
+        <i class="ph ph-x" aria-hidden="true"></i>
+      </button>
+    </div>
+    <div class="sheet__body" id="sheet-body"></div>
+  </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>

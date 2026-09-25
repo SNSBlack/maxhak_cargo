@@ -1,0 +1,29 @@
+# Секреты: токен бота и доступы к 1С живут только локально
+.env
+*.pem
+*.key
+
+# Рабочие данные
+data/app.sqlite3
+data/*.sqlite3
+data/test_*.json
+
+# Сгенерированный датасет: воспроизводится из tools/generate_dataset.py по seed
+data/demo_1c_large.json
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+
+# Архивы сдачи
+dist/
+
+# ОС и IDE
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
