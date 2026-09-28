@@ -19,6 +19,10 @@ class Settings(BaseSettings):
     max_bot_username: str = "t459_hakaton_max_bot"
     max_api_base: str = "https://botapi.max.ru"
     public_webapp_url: str = ""
+    # MAX принимает кнопку open_app только для мини-приложения, которое
+    # организаторы привязали к боту. С непривязанным адресом API отклоняет
+    # сообщение целиком (404 "Link not found"). Ставим 1 после подтверждения.
+    miniapp_registered: int = 0
 
     # Авторизация мини-приложения
     auth_mode: str = "dev"  # strict | lenient | dev

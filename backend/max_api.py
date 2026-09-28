@@ -10,7 +10,8 @@
     Поле web_app принимает именно строку: объект вида {"url": ...} API не
     десериализует;
   - long polling: GET /updates?marker=&limit=&timeout=;
-  - ответ на callback: POST /answers?callback_id=<id>.
+  - ответ на callback: POST /answers?callback_id=<id>. Тело обязано содержать
+    `message` или `notification`, пустое отклоняется с 400.
 """
 
 from __future__ import annotations
@@ -108,6 +109,10 @@ class MaxApi:
             body["message"] = {"text": text}
         if notification:
             body["notification"] = notification
+        if not body:
+            # MAX отклоняет пустое подтверждение с 400 ("message or notification
+            # required"), проверено на живом API. Короткое уведомление вместо ошибки.
+            body["notification"] = "Готово"
         return await self._request(
             "POST", "/answers", params={"callback_id": callback_id}, json=body
         )

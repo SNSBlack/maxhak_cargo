@@ -94,12 +94,13 @@ function initTheme() {
       return null;
     }
   })();
-  if (saved) document.documentElement.dataset.theme = saved;
+  // По умолчанию светлая: основа бренда белая. Раньше тема шла за системной, и
+  // на телефоне с тёмным оформлением белой основы никто не видел.
+  document.documentElement.dataset.theme = saved === 'dark' ? 'dark' : 'light';
 
   $('#theme-toggle').addEventListener('click', () => {
-    const order = ['auto', 'light', 'dark'];
-    const current = document.documentElement.dataset.theme || 'auto';
-    const next = order[(order.indexOf(current) + 1) % order.length];
+    const current = document.documentElement.dataset.theme;
+    const next = current === 'dark' ? 'light' : 'dark';
     document.documentElement.dataset.theme = next;
     try {
       localStorage.setItem('cargo-theme', next);
@@ -112,6 +113,10 @@ function initTheme() {
 /* --- знакомство при первом открытии --- */
 
 const TOUR_KEY = 'cargo-tour-seen';
+
+const SOURCE_NOTE =
+  'Показаны демонстрационные данные: подключение к 1С, оператору ЭДО и движку ' +
+  'маршрутов пока смоделировано.';
 
 const TOUR_STEPS = [
   {
@@ -168,6 +173,7 @@ function showTour() {
     'Четыре экрана',
     `<p class="card__text" style="margin-bottom:12px">Коротко, что где лежит. Показываю один раз.</p>
      <div class="rows">${items}</div>
+     ${state.meta && state.meta.data_is_mock ? `<p class="source-note">${esc(SOURCE_NOTE)}</p>` : ''}
      <div class="more" style="margin-top:14px">
        <button class="btn btn--primary" type="button" id="tour-done">Понятно, начать</button>
      </div>`,
@@ -313,15 +319,27 @@ async function loadSummary() {
   try {
     const summary = await api(`/api/summary?period_days=${state.summaryPeriod}`);
 
+    // Значение и расшифровка на разных строках: в треть ширины телефона
+    // моноширинное «488 л / 35 917 ₽» не влезало и рвалось посреди числа.
+    const sub = (name, text) => {
+      $(`[data-kpi-sub="${name}"]`, kpi).textContent = text;
+    };
     $('[data-kpi="revenue"]', kpi).textContent = money(summary.revenue_rub);
+    sub('revenue', `${summary.done_trips} рейсов`);
+
     const marginEl = $('[data-kpi="margin"]', kpi);
-    marginEl.textContent =
-      money(summary.margin_rub) + (summary.margin_pct === null ? '' : ` / ${summary.margin_pct}%`);
+    marginEl.textContent = money(summary.margin_rub);
     marginEl.classList.toggle('kpi__value--ok', (summary.margin_rub || 0) > 0);
     marginEl.classList.toggle('kpi__value--danger', (summary.margin_rub || 0) < 0);
-    $('[data-kpi="fuel"]', kpi).textContent = summary.fuel_overrun_l
-      ? `${liters(summary.fuel_overrun_l)} / ${money(summary.fuel_overrun_rub)}`
-      : 'в норме';
+    sub('margin', summary.margin_pct === null ? '' : `${summary.margin_pct}% от выручки`);
+
+    if (summary.fuel_overrun_l) {
+      $('[data-kpi="fuel"]', kpi).textContent = liters(summary.fuel_overrun_l);
+      sub('fuel', money(summary.fuel_overrun_rub));
+    } else {
+      $('[data-kpi="fuel"]', kpi).textContent = 'в норме';
+      sub('fuel', 'топливо');
+    }
     kpi.dataset.state = 'ready';
 
     $('#summary-hint').textContent =
@@ -817,7 +835,13 @@ async function boot() {
   try {
     state.meta = await api('/api/meta');
     $('#company-name').textContent = state.meta.company.name || 'компания не определена';
-    $('#mock-badge').hidden = !state.meta.data_is_mock;
+    // Модельные интеграции нельзя выдавать за настоящие, но и кричащая жёлтая
+    // плашка в шапке удешевляла приложение. Спокойная строка внизу экрана.
+    const note = $('#source-note');
+    if (state.meta.data_is_mock) {
+      note.textContent = SOURCE_NOTE;
+      note.hidden = false;
+    }
   } catch (err) {
     $('#company-name').textContent = 'нет связи с сервером';
   }

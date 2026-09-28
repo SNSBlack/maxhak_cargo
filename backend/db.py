@@ -33,12 +33,20 @@ CREATE TABLE IF NOT EXISTS calc_log (
     payload     TEXT NOT NULL,
     created_at  TEXT NOT NULL
 );
+-- Журнал отправленных поводов ведётся для каждого пользователя отдельно:
+-- ключ уникален в паре с max_user_id, а не глобально.
 CREATE TABLE IF NOT EXISTS alerts_sent (
-    key         TEXT PRIMARY KEY,
-    max_user_id INTEGER,
-    sent_at     TEXT NOT NULL
+    key         TEXT NOT NULL,
+    max_user_id INTEGER NOT NULL,
+    sent_at     TEXT NOT NULL,
+    PRIMARY KEY (key, max_user_id)
 );
 """
+
+# Выставляется, если init() перестроил журнал уведомлений старого формата.
+# Тогда всем существующим пользователям нужно заново погасить backlog: в старой
+# схеме это молча не срабатывало ни для кого, кроме первого пользователя.
+alerts_journal_migrated = False
 
 
 def _now() -> str:
@@ -58,12 +66,44 @@ def connect() -> Iterator[sqlite3.Connection]:
 
 
 def init() -> None:
+    global alerts_journal_migrated
     with connect() as conn:
         conn.executescript(SCHEMA)
         # Миграция для баз, созданных до появления онбординга.
         columns = {row["name"] for row in conn.execute("PRAGMA table_info(users)")}
         if "onboarding" not in columns:
             conn.execute("ALTER TABLE users ADD COLUMN onboarding INTEGER NOT NULL DEFAULT 0")
+
+        # Миграция журнала уведомлений. В первой версии ключ был уникален
+        # глобально: второму пользователю не гасилась история, а следующая
+        # запись падала на UNIQUE constraint и роняла рассылку у всех.
+        pk_columns = [
+            row["name"]
+            for row in conn.execute("PRAGMA table_info(alerts_sent)")
+            if row["pk"]
+        ]
+        if pk_columns == ["key"]:
+            conn.executescript(
+                """
+                CREATE TABLE alerts_sent_v2 (
+                    key         TEXT NOT NULL,
+                    max_user_id INTEGER NOT NULL,
+                    sent_at     TEXT NOT NULL,
+                    PRIMARY KEY (key, max_user_id)
+                );
+                INSERT OR IGNORE INTO alerts_sent_v2 (key, max_user_id, sent_at)
+                    SELECT key, max_user_id, sent_at FROM alerts_sent
+                    WHERE max_user_id IS NOT NULL;
+                DROP TABLE alerts_sent;
+                ALTER TABLE alerts_sent_v2 RENAME TO alerts_sent;
+                """
+            )
+            alerts_journal_migrated = True
+
+
+def all_user_ids() -> list[int]:
+    with connect() as conn:
+        return [row["max_user_id"] for row in conn.execute("SELECT max_user_id FROM users")]
 
 
 def onboarding_step(max_user_id: int) -> int:
@@ -160,15 +200,14 @@ def recent_calculations(max_user_id: int | None, limit: int = 10) -> list[dict[s
 
 
 def mark_alert(key: str, max_user_id: int) -> bool:
-    """Возвращает True, если алерт по этому ключу ещё не отправляли."""
+    """Возвращает True, если этому пользователю повод ещё не отправляли.
+
+    Проверка и запись одним запросом: INSERT OR IGNORE по составному ключу
+    не падает на повторе и не оставляет окна между SELECT и INSERT.
+    """
     with connect() as conn:
-        exists = conn.execute(
-            "SELECT 1 FROM alerts_sent WHERE key = ? AND max_user_id = ?", (key, max_user_id)
-        ).fetchone()
-        if exists:
-            return False
-        conn.execute(
-            "INSERT INTO alerts_sent (key, max_user_id, sent_at) VALUES (?, ?, ?)",
+        cursor = conn.execute(
+            "INSERT OR IGNORE INTO alerts_sent (key, max_user_id, sent_at) VALUES (?, ?, ?)",
             (key, max_user_id, _now()),
         )
-        return True
+        return cursor.rowcount == 1

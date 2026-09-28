@@ -159,23 +159,74 @@ def webapp_configured() -> bool:
     return settings.public_webapp_url.strip().startswith("https://")
 
 
+# Выставляется, если MAX отклонил кнопку open_app (мини-приложение не привязано
+# к боту). После этого клавиатуры собираются без неё до перезапуска.
+_open_app_rejected = False
+
+
+def native_app_button_allowed() -> bool:
+    return webapp_configured() and bool(settings.miniapp_registered) and not _open_app_rejected
+
+
 def main_keyboard() -> list[list[dict[str, Any]]]:
     """Клавиатура под сообщением.
 
-    Кнопка open_app показывается только когда задан публичный https-адрес.
-    Раньше при пустом PUBLIC_WEBAPP_URL в неё подставлялся диплинк бота, MAX не
-    мог по нему ничего открыть и показывал экран "Техническая заминка".
+    Кнопка приложения есть всегда, когда задан публичный https-адрес, но её тип
+    зависит от привязки. Нативная open_app работает только для мини-приложения,
+    которое организаторы привязали к боту: с чужим адресом MAX отклоняет всё
+    сообщение (404 "Link not found"), и пользователь не получает ответа вовсе.
+    До привязки ставим обычную кнопку-ссылку на ту же страницу.
     """
     rows: list[list[dict[str, Any]]] = []
     if webapp_configured():
         url = settings.public_webapp_url.strip()
-        rows.append([open_app_button("Открыть приложение", url)])
-        rows.append([link_button("Открыть в браузере", url)])
+        if native_app_button_allowed():
+            rows.append([open_app_button("Открыть приложение", url)])
+        else:
+            rows.append([link_button("Открыть приложение", url)])
     rows.append(
         [callback_button("Рейсы сейчас", "trips"), callback_button("Статус ЭДО", "edo")]
     )
     rows.append([callback_button("Деньги за период", "money")])
     return rows
+
+
+def _degrade_open_app(buttons: list[list[dict[str, Any]]]) -> list[list[dict[str, Any]]]:
+    """Нативная кнопка приложения заменяется ссылкой на ту же страницу."""
+    return [
+        [
+            link_button(b["text"], b["web_app"]) if b.get("type") == "open_app" else b
+            for b in row
+        ]
+        for row in buttons
+    ]
+
+
+async def send(
+    api: MaxApi,
+    text: str,
+    buttons: list[list[dict[str, Any]]] | None = None,
+    **target: Any,
+) -> dict[str, Any]:
+    """Отправка сообщения, которая не молчит из-за кнопки приложения.
+
+    Если мини-приложение не привязано к боту, MAX отклоняет сообщение с
+    open_app целиком. Тогда переотправляем его с кнопкой-ссылкой и больше
+    нативную кнопку не используем, чтобы не терять каждое следующее сообщение.
+    """
+    global _open_app_rejected
+    try:
+        return await api.send_message(text, buttons=buttons, **target)
+    except MaxApiError as exc:
+        has_app = any(b.get("type") == "open_app" for row in (buttons or []) for b in row)
+        if not has_app or "not.found" not in str(exc):
+            raise
+        _open_app_rejected = True
+        log.warning(
+            "MAX отклонил кнопку open_app: мини-приложение не привязано к боту. "
+            "Переотправляю с кнопкой-ссылкой, дальше нативную кнопку не использую."
+        )
+        return await api.send_message(text, buttons=_degrade_open_app(buttons), **target)
 
 
 def app_text() -> str:
@@ -286,10 +337,10 @@ async def start_or_resume(api: MaxApi, user_id: int | None, target: dict[str, An
     """Новому показываем знакомство, вернувшемуся - короткое меню без стены текста."""
     step = db.onboarding_step(user_id) if user_id else 0
     if step >= ONBOARDING_DONE:
-        await api.send_message("С возвращением.\n\n" + HELP, buttons=main_keyboard(), **target)
+        await send(api, "С возвращением.\n\n" + HELP, buttons=main_keyboard(), **target)
         return
     intro, buttons = onboarding_intro()
-    await api.send_message(intro, buttons=buttons, **target)
+    await send(api, intro, buttons=buttons, **target)
 
 
 async def handle_message(api: MaxApi, update: dict[str, Any]) -> None:
@@ -314,36 +365,36 @@ async def handle_message(api: MaxApi, update: dict[str, Any]) -> None:
         if user_id:
             db.set_onboarding_step(user_id, 0)
         intro, buttons = onboarding_intro()
-        await api.send_message(intro, buttons=buttons, **target)
+        await send(api, intro, buttons=buttons, **target)
         return
 
     if text.startswith("/help"):
-        await api.send_message(HELP, **target)
+        await send(api, HELP, **target)
         return
 
     if text.startswith("/app"):
-        await api.send_message(
+        await send(api, 
             app_text(), buttons=main_keyboard() if webapp_configured() else None, **target
         )
         return
 
     if text.startswith("/trips"):
-        await api.send_message(trips_text(), **target)
+        await send(api, trips_text(), **target)
         return
 
     if text.startswith("/edo"):
-        await api.send_message(edo_text(), **target)
+        await send(api, edo_text(), **target)
         return
 
     if text.startswith("/money"):
-        await api.send_message(money_text(), **target)
+        await send(api, money_text(), **target)
         return
 
     if text.startswith("/notify_on") or text.startswith("/notify_off"):
         on = text.startswith("/notify_on")
         if user_id:
             db.set_notifications(user_id, edo=on, margin=on)
-        await api.send_message(
+        await send(api, 
             "Уведомления включены. Присылаю только новые события, историю не сыплю."
             if on
             else "Уведомления выключены.",
@@ -351,16 +402,22 @@ async def handle_message(api: MaxApi, update: dict[str, Any]) -> None:
         )
         return
 
-    await api.send_message("Не знаю такой команды.\n\n" + HELP, **target)
+    await send(api, "Не знаю такой команды.\n\n" + HELP, **target)
 
 
 async def handle_callback(api: MaxApi, update: dict[str, Any]) -> None:
     callback = update.get("callback") or {}
     payload = str(callback.get("payload") or "")
     callback_id = callback.get("callback_id")
-    user_id = (callback.get("user") or {}).get("user_id")
+    user = callback.get("user") or {}
+    user_id = user.get("user_id")
     chat_id = ((update.get("message") or {}).get("recipient") or {}).get("chat_id")
     target = {"chat_id": chat_id} if chat_id else {"user_id": user_id}
+
+    # Кнопку могут нажать в старом сообщении, когда пользователя ещё нет в базе
+    # (например, после её пересоздания). Без регистрации шаг знакомства не
+    # сохранится, и после "Пропустить" знакомство покажется снова.
+    register(user_id, user.get("name"), chat_id)
 
     if payload.startswith("onb:"):
         # Шаги знакомства приходят следующим сообщением: так видно прогресс,
@@ -369,23 +426,41 @@ async def handle_callback(api: MaxApi, update: dict[str, Any]) -> None:
             if user_id:
                 db.set_onboarding_step(user_id, ONBOARDING_DONE)
             text, buttons = "Хорошо, не буду занудствовать.\n\n" + HELP, main_keyboard()
+            toast = "Знакомство пропущено"
         else:
             step, builder = ONBOARDING.get(payload, (0, onboarding_intro))
             if user_id:
                 db.set_onboarding_step(user_id, step)
             text, buttons = builder()
+            toast = "Готово" if step == ONBOARDING_DONE else f"Шаг {step} из 3"
+
+        # Сначала следующий шаг, потом подтверждение нажатия. Раньше порядок был
+        # обратный, а пустое подтверждение MAX отклоняет с 400 ("message or
+        # notification required"): исключение обрывало обработчик, и кнопки
+        # выглядели мёртвыми.
+        await send(api, text, buttons=buttons, **target)
         if callback_id:
-            await api.answer_callback(callback_id)
-        await api.send_message(text, buttons=buttons, **target)
+            try:
+                await api.answer_callback(callback_id, notification=toast)
+            except MaxApiError as exc:
+                log.warning("Не удалось подтвердить нажатие кнопки: %s", exc)
         return
 
-    text = {
-        "trips": trips_text,
-        "edo": edo_text,
-        "money": money_text,
-    }.get(payload, lambda: "Неизвестное действие.")()
+    # Ответ новым сообщением с меню. Раньше текст уходил в подтверждение нажатия:
+    # в MAX такой ответ заменяет исходное сообщение, и меню с кнопками исчезало
+    # после первого же нажатия.
+    screens = {
+        "trips": (trips_text, "Рейсы в работе"),
+        "edo": (edo_text, "Статус документов"),
+        "money": (money_text, "Деньги за 30 дней"),
+    }
+    builder, toast = screens.get(payload, (lambda: "Эта кнопка устарела. " + HELP, "Кнопка устарела"))
+    await send(api, builder(), buttons=main_keyboard(), **target)
     if callback_id:
-        await api.answer_callback(callback_id, text=text)
+        try:
+            await api.answer_callback(callback_id, notification=toast)
+        except MaxApiError as exc:
+            log.warning("Не удалось подтвердить нажатие кнопки: %s", exc)
 
 
 async def dispatch(api: MaxApi, update: dict[str, Any]) -> None:
@@ -538,7 +613,7 @@ async def send_alerts(api: MaxApi, shown: int = 3) -> int:
         if not (fresh_docs or fresh_trips):
             continue
         try:
-            await api.send_message(
+            await send(api, 
                 digest_text(fresh_docs, fresh_trips, shown),
                 chat_id=row["chat_id"],
                 buttons=main_keyboard(),
@@ -552,6 +627,13 @@ async def send_alerts(api: MaxApi, shown: int = 3) -> int:
 async def run(stop: asyncio.Event | None = None) -> None:
     stop = stop or asyncio.Event()
     api = MaxApi()
+    if db.alerts_journal_migrated:
+        # Старая схема журнала молча не гасила историю никому, кроме первого
+        # пользователя. Гасим сейчас, до первого цикла рассылки.
+        keys = pending_alert_keys()
+        for user_id in db.all_user_ids():
+            db.prime_alerts(user_id, keys)
+        log.info("Журнал уведомлений перестроен, история погашена для всех пользователей")
     try:
         me = await api.me()
         log.info("Бот запущен: @%s (%s)", me.get("username"), me.get("name"))

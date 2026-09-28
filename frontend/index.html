@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="ru" data-theme="auto">
+<html lang="ru" data-theme="light">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
@@ -21,7 +21,6 @@
     <span class="topbar__company" id="company-name">загрузка</span>
   </div>
   <div class="topbar__meta">
-    <span class="badge badge--mock" id="mock-badge" hidden>Демо-данные</span>
     <button class="icon-btn" id="open-tour" type="button" aria-label="Что где находится">
       <i class="ph ph-question" aria-hidden="true"></i>
     </button>
@@ -44,9 +43,21 @@
     </div>
 
     <div class="kpi" id="summary-kpi" data-state="loading">
-      <div class="kpi__cell"><span class="kpi__label">Выручка</span><span class="kpi__value num" data-kpi="revenue">-</span></div>
-      <div class="kpi__cell"><span class="kpi__label">Маржа</span><span class="kpi__value num" data-kpi="margin">-</span></div>
-      <div class="kpi__cell"><span class="kpi__label">Перерасход топлива</span><span class="kpi__value num" data-kpi="fuel">-</span></div>
+      <div class="kpi__cell">
+        <span class="kpi__label">Выручка</span>
+        <span class="kpi__value num" data-kpi="revenue">-</span>
+        <span class="kpi__sub num" data-kpi-sub="revenue"></span>
+      </div>
+      <div class="kpi__cell">
+        <span class="kpi__label">Маржа</span>
+        <span class="kpi__value num" data-kpi="margin">-</span>
+        <span class="kpi__sub num" data-kpi-sub="margin"></span>
+      </div>
+      <div class="kpi__cell">
+        <span class="kpi__label">Перерасход</span>
+        <span class="kpi__value num" data-kpi="fuel">-</span>
+        <span class="kpi__sub num" data-kpi-sub="fuel"></span>
+      </div>
     </div>
     <p class="hint" id="summary-hint"></p>
     <div id="losing-block"></div>
@@ -70,6 +81,7 @@
 
     <div id="trips-list" class="rows" data-state="loading" aria-live="polite"></div>
     <div id="trips-more"></div>
+    <p class="source-note" id="source-note" hidden></p>
   </section>
 
   <!-- ЭКРАН: МАРШРУТ -->
