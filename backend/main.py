@@ -8,11 +8,12 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from . import db
 from .adapters import DataSourceError
+from .assets import render_index
 from .config import ROOT, settings
 from .routers import edo, meta, routes, tracking, trips
 
@@ -142,5 +143,33 @@ app.include_router(trips.router)
 app.include_router(edo.router)
 app.include_router(routes.router)
 app.include_router(tracking.router)
+
+@app.middleware("http")
+async def cache_headers(request: Request, call_next):
+    """Явные правила кэша вместо эвристики браузера.
+
+    Без Cache-Control браузер внутри MAX держал старые css и js и показывал
+    прежнюю версию сайта после обновления.
+    """
+    response = await call_next(request)
+    path = request.url.path
+    if path.endswith((".css", ".js")):
+        # Файл с версией в адресе не меняется никогда: новая версия = новый адрес
+        response.headers["Cache-Control"] = (
+            "public, max-age=31536000, immutable" if "v" in request.query_params else "no-cache"
+        )
+    elif path.startswith("/api/"):
+        response.headers.setdefault("Cache-Control", "no-store")
+    return response
+
+
+@app.get("/", include_in_schema=False)
+@app.get("/index.html", include_in_schema=False)
+def index() -> HTMLResponse:
+    # Страница всегда перезапрашивается, а через неё подтягиваются свежие адреса статики
+    return HTMLResponse(
+        render_index(), headers={"Cache-Control": "no-cache, no-store, must-revalidate"}
+    )
+
 
 app.mount("/", StaticFiles(directory=ROOT / "frontend", html=True), name="frontend")

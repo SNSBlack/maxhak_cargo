@@ -11,6 +11,7 @@ import logging
 from typing import Any
 
 from . import db
+from .assets import build_id
 from .config import settings
 from .max_api import MaxApi, MaxApiError, callback_button, link_button, open_app_button
 from .services import catalog, edo as edo_service
@@ -164,6 +165,20 @@ def webapp_configured() -> bool:
 _open_app_rejected = False
 
 
+def app_url() -> str:
+    """Адрес мини-приложения с версией сборки.
+
+    Браузер внутри MAX успел закэшировать старую страницу. Новый адрес при
+    каждой сборке фронтенда гарантирует, что по кнопке откроется свежая версия.
+    Для нативной кнопки open_app адрес должен совпадать с привязанным, поэтому
+    версия добавляется только к кнопке-ссылке.
+    """
+    base = settings.public_webapp_url.strip().rstrip("/")
+    if native_app_button_allowed():
+        return base
+    return f"{base}/?v={build_id()}"
+
+
 def native_app_button_allowed() -> bool:
     return webapp_configured() and bool(settings.miniapp_registered) and not _open_app_rejected
 
@@ -179,7 +194,7 @@ def main_keyboard() -> list[list[dict[str, Any]]]:
     """
     rows: list[list[dict[str, Any]]] = []
     if webapp_configured():
-        url = settings.public_webapp_url.strip()
+        url = app_url()
         if native_app_button_allowed():
             rows.append([open_app_button("Открыть приложение", url)])
         else:
