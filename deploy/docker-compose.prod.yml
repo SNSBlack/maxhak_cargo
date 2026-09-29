@@ -1,0 +1,35 @@
+# Продакшн поверх основного docker-compose.yml: добавляет HTTPS через Caddy и
+# закрывает прямой доступ к приложению снаружи.
+#
+#   DOMAIN=203-0-113-5.sslip.io docker compose \
+#     -f docker-compose.yml -f deploy/docker-compose.prod.yml up -d --build
+#
+# Снаружи открыты только 80 (выдача сертификата и редирект) и 443.
+
+services:
+  app:
+    # Приложение слушает только внутреннюю сеть compose, наружу его отдаёт Caddy
+    ports: !reset []
+    environment:
+      PUBLIC_WEBAPP_URL: https://${DOMAIN}
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: cargo-caddy
+    depends_on:
+      - app
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      DOMAIN: ${DOMAIN}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      # Сертификаты переживают перезапуск, иначе упрёмся в лимиты Let's Encrypt
+      - caddy-data:/data
+      - caddy-config:/config
+    restart: unless-stopped
+
+volumes:
+  caddy-data:
+  caddy-config:
