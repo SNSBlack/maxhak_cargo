@@ -55,6 +55,32 @@ def local_addresses() -> list[str]:
     return urls
 
 
+TOKEN_PLACEHOLDERS = {"", "put-your-token-here"}
+
+
+def bot_token_present() -> bool:
+    """Заглушка из .env.example - не токен.
+
+    Проверяющие копируют .env.example и сразу запускают. С заглушкой бот
+    пытался стартовать, падал и оставлял в логах трейсбек, хотя мини-приложению
+    токен не нужен вовсе.
+    """
+    return settings.max_bot_token.strip() not in TOKEN_PLACEHOLDERS
+
+
+def _report_bot_exit(task: asyncio.Task) -> None:
+    """Падение бота не должно выглядеть как падение сервиса."""
+    if task.cancelled():
+        return
+    exc = task.exception()
+    if exc is not None:
+        log.error(
+            "Бот остановился: %s. Проверьте MAX_BOT_TOKEN в .env. "
+            "Мини-приложение и API продолжают работать.",
+            exc,
+        )
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     db.init()
@@ -67,13 +93,17 @@ async def lifespan(app: FastAPI):
         )
     stop = asyncio.Event()
     task: asyncio.Task | None = None
-    if settings.enable_bot and settings.max_bot_token:
+    if settings.enable_bot and bot_token_present():
         from .bot import run as run_bot
 
         task = asyncio.create_task(run_bot(stop))
+        task.add_done_callback(_report_bot_exit)
         log.info("Бот запускается в фоне")
     else:
-        log.info("Бот выключен (ENABLE_BOT=0 или нет токена)")
+        log.info(
+            "Бот выключен (ENABLE_BOT=0 или токен не задан). "
+            "Мини-приложение и API работают без него."
+        )
     try:
         yield
     finally:

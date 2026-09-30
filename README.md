@@ -9,6 +9,78 @@
 
 ---
 
+## Запуск мини-приложения за 3 команды
+
+Нужен только Docker с Compose. Токен бота, доступ к 1С и прочие ключи для
+мини-приложения **не нужны**: оно работает на встроенных демонстрационных
+данных.
+
+```bash
+git clone https://github.com/SNSBlack/maxhak_cargo.git && cd maxhak_cargo
+cp .env.example .env
+docker compose up -d --build
+```
+
+Откройте в браузере **http://localhost:8099** — это мини-приложение целиком:
+рейсы с разбором себестоимости, сравнение маршрутов, ЭДО и трекинг груза.
+Окно удобнее сузить до ширины телефона (DevTools → режим устройства), интерфейс
+рассчитан на мобильный экран.
+
+Проверка, что сервис жив: `curl http://localhost:8099/api/health` должен вернуть
+`{"status":"ok"}`. Документация API: http://localhost:8099/docs.
+
+<details>
+<summary><b>Если что-то пошло не так</b></summary>
+
+| Симптом | Что сделать |
+|---|---|
+| `port is already allocated` | Порт 8099 занят. В `docker-compose.yml` замените `"8099:8099"` на `"8100:8099"` и откройте http://localhost:8100 |
+| `env file .env not found` | Не выполнена команда `cp .env.example .env` |
+| Страница открылась без иконок | Иконки грузятся с CDN, нужен интернет. На расчёты это не влияет |
+| Нужно посмотреть, что происходит | `docker compose logs -f app` |
+| Остановить | `docker compose down` |
+
+Без Docker, если он недоступен (нужен Python 3.12+):
+
+```bash
+python -m pip install -r requirements.txt
+cp .env.example .env
+python run.py
+```
+
+</details>
+
+<details>
+<summary><b>Открыть мини-приложение внутри MAX или показать с телефона</b></summary>
+
+MAX открывает мини-приложение только по публичному **https**-адресу, `localhost`
+для него недоступен. Самый быстрый способ получить такой адрес — временный
+туннель Cloudflare, без регистрации:
+
+```bash
+# Linux
+docker run --rm --network host cloudflare/cloudflared tunnel --url http://localhost:8099
+# Windows и macOS (Docker Desktop)
+docker run --rm cloudflare/cloudflared tunnel --url http://host.docker.internal:8099
+```
+
+В выводе появится адрес вида `https://<слова>.trycloudflare.com` — он открывается
+с любого телефона. Чтобы бот показывал кнопку «Открыть приложение», впишите в
+`.env` этот адрес в `PUBLIC_WEBAPP_URL` и токен в `MAX_BOT_TOKEN`, затем
+выполните `docker compose up -d`.
+
+Постоянный адрес на своём сервере с автоматическим сертификатом (свой домен не
+нужен, подойдёт `<ip-сервера>.sslip.io`):
+
+```bash
+DOMAIN=203-0-113-5.sslip.io docker compose \
+  -f docker-compose.yml -f deploy/docker-compose.prod.yml up -d --build
+```
+
+</details>
+
+---
+
 ## Проблема
 
 Четыре боли перевозчиков, с которых начинался проект:
